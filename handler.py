@@ -174,17 +174,26 @@ def handler(job):
 
         # Extract parameters
         prompt = job_input.get("prompt")
-        width = job_input.get("width", 1280)
-        height = job_input.get("height", 720)
-        frame_count = job_input.get("frame_count", 121)
-        seed = job_input.get("seed", 0)
-        negative_prompt = job_input.get("negative_prompt")
+        aspect_ratio = job_input.get("aspect_ratio", "16:9")
 
         if not prompt:
             return {"error": "Missing required parameter: prompt"}
 
+        # Validate and map aspect_ratio
+        ASPECT_RATIO_MAP = {
+            "16:9": (1280, 720),
+            "9:16": (720, 1280),
+        }
+        if aspect_ratio not in ASPECT_RATIO_MAP:
+            return {"error": f"Invalid aspect_ratio: {aspect_ratio}. Must be '16:9' or '9:16'"}
+        width, height = ASPECT_RATIO_MAP[aspect_ratio]
+
+        # Internal defaults (not exposed to API)
+        frame_count = 121
+        seed = 0
+
         logger.info(f"Task {task_id}: Processing text-to-video with prompt: '{prompt[:80]}...'")
-        logger.info(f"Parameters - width: {width}, height: {height}, frame_count: {frame_count}")
+        logger.info(f"Parameters - aspect_ratio: {aspect_ratio}, width: {width}, height: {height}, frame_count: {frame_count}")
 
         # Handle seed
         if seed == 0 or seed == -1:
@@ -206,10 +215,6 @@ def handler(job):
         # Frame count
         workflow["92:43"]["inputs"]["length"] = frame_count
         workflow["92:51"]["inputs"]["frames_number"] = frame_count
-
-        # Override negative prompt if provided
-        if negative_prompt:
-            workflow["92:4"]["inputs"]["text"] = negative_prompt
 
         # Wait for ComfyUI HTTP endpoint
         wait_for_comfyui_http(timeout=300)
