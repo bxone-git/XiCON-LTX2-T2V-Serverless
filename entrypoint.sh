@@ -14,7 +14,64 @@ if [ ! -d "$NETVOLUME" ]; then
     echo "Handler will start but jobs will fail without models"
 fi
 
-# Create symlinks (only if volume exists)
+# Model auto-download: download if missing or corrupted (too small)
+download_model() {
+    local model_path="$1"
+    local model_name="$2"
+    local model_url="$3"
+    local min_size="$4"  # minimum expected size in bytes
+
+    local dir=$(dirname "$model_path")
+    mkdir -p "$dir"
+
+    if [ -f "$model_path" ]; then
+        local actual_size=$(stat -c%s "$model_path" 2>/dev/null || stat -f%z "$model_path" 2>/dev/null || echo 0)
+        if [ "$actual_size" -ge "$min_size" ]; then
+            echo "  [OK] $model_name ($(numfmt --to=iec $actual_size 2>/dev/null || echo ${actual_size}B))"
+            return 0
+        else
+            echo "  [CORRUPT] $model_name - too small (${actual_size}B < ${min_size}B), re-downloading..."
+            rm -f "$model_path"
+        fi
+    else
+        echo "  [MISSING] $model_name - downloading..."
+    fi
+
+    echo "  Downloading $model_name from HuggingFace..."
+    if wget -q --show-progress -O "$model_path" "$model_url"; then
+        echo "  [DOWNLOADED] $model_name"
+    else
+        echo "  [FAILED] $model_name download failed"
+        rm -f "$model_path"
+    fi
+}
+
+echo "Verifying and downloading models..."
+download_model \
+    "$NETVOLUME/models/checkpoints/ltx-2-19b-dev-fp8.safetensors" \
+    "LTX-2 19B FP8 Checkpoint" \
+    "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-dev-fp8.safetensors" \
+    5000000000
+
+download_model \
+    "$NETVOLUME/models/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors" \
+    "Gemma 3 12B Text Encoder" \
+    "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors" \
+    1000000000
+
+download_model \
+    "$NETVOLUME/models/loras/ltx-2-19b-distilled-lora-384.safetensors" \
+    "LTX-2 Distilled LoRA" \
+    "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors" \
+    10000000
+
+download_model \
+    "$NETVOLUME/models/latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors" \
+    "LTX-2 Spatial Upscaler" \
+    "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors" \
+    10000000
+
+# Create symlinks from network volume to ComfyUI model dirs
 if [ -d "$NETVOLUME/models" ]; then
     echo "Creating symlinks..."
     rm -rf /ComfyUI/models/checkpoints
@@ -35,24 +92,6 @@ else
     echo "WARNING: $NETVOLUME/models not found, skipping symlinks"
 fi
 
-# Model verification (warnings only, never exit)
-check_model() {
-    local model_path="$1"
-    local model_name="$2"
-
-    if [ ! -f "$model_path" ]; then
-        echo "  [MISSING] $model_name ($model_path)"
-    else
-        echo "  [OK] $model_name"
-    fi
-}
-
-echo "Verifying models..."
-check_model "$NETVOLUME/models/checkpoints/ltx-2-19b-dev-fp8.safetensors" "LTX-2 19B FP8 Checkpoint"
-check_model "$NETVOLUME/models/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors" "Gemma 3 12B Text Encoder"
-check_model "$NETVOLUME/models/loras/ltx-2-19b-distilled-lora-384.safetensors" "LTX-2 Distilled LoRA"
-check_model "$NETVOLUME/models/latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors" "LTX-2 Spatial Upscaler"
-
 # GPU Detection
 GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "Unknown")
 echo "Detected GPU: $GPU_NAME"
@@ -63,7 +102,7 @@ python /ComfyUI/main.py --listen &
 
 # Wait for ComfyUI
 echo "Waiting for ComfyUI..."
-max_wait=180
+max_wait=300
 wait_count=0
 while [ $wait_count -lt $max_wait ]; do
     if curl -s http://127.0.0.1:8188/ > /dev/null 2>&1; then
