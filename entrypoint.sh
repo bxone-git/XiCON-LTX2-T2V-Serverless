@@ -47,29 +47,30 @@ download_model() {
 }
 
 echo "Verifying and downloading models..."
+# Expected sizes from HuggingFace (actual: 27.1GB, 6GB, 7.67GB, 996MB)
 download_model \
     "$NETVOLUME/models/checkpoints/ltx-2-19b-dev-fp8.safetensors" \
-    "LTX-2 19B FP8 Checkpoint" \
+    "LTX-2 19B FP8 Checkpoint (27.1GB)" \
     "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-dev-fp8.safetensors" \
-    5000000000
+    25000000000
 
 download_model \
     "$NETVOLUME/models/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors" \
-    "Gemma 3 12B Text Encoder" \
+    "Gemma 3 12B Text Encoder (6GB)" \
     "https://huggingface.co/Comfy-Org/ltx-2/resolve/main/split_files/text_encoders/gemma_3_12B_it_fp4_mixed.safetensors" \
-    1000000000
+    4000000000
 
 download_model \
     "$NETVOLUME/models/loras/ltx-2-19b-distilled-lora-384.safetensors" \
-    "LTX-2 Distilled LoRA" \
+    "LTX-2 Distilled LoRA (7.67GB)" \
     "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-19b-distilled-lora-384.safetensors" \
-    10000000
+    6000000000
 
 download_model \
     "$NETVOLUME/models/latent_upscale_models/ltx-2-spatial-upscaler-x2-1.0.safetensors" \
-    "LTX-2 Spatial Upscaler" \
+    "LTX-2 Spatial Upscaler (996MB)" \
     "https://huggingface.co/Lightricks/LTX-2/resolve/main/ltx-2-spatial-upscaler-x2-1.0.safetensors" \
-    10000000
+    800000000
 
 # Create symlinks from network volume to ComfyUI model dirs
 if [ -d "$NETVOLUME/models" ]; then
