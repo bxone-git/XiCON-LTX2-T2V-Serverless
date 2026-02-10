@@ -257,7 +257,7 @@
   },
   "92:73": {
     "inputs": {
-      "sigmas_string": "0.909375, 0.725, 0.421875, 0.0"
+      "sigmas": "0.909375, 0.725, 0.421875, 0.0"
     },
     "class_type": "ManualSigmas",
     "_meta": {
