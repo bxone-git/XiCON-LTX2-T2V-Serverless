@@ -1,0 +1,693 @@
+{
+  "name": "XiCON_T2V_LTX2_V1",
+  "active": false,
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## XiCON T2V LTX2 v1\n### 역할:\n- 텍스트 → AI 비디오 생성 (LTX-2)\n\n### 입력 데이터 (input_data):\n- prompt: 비디오 생성 프롬프트\n\n### Endpoint:\n- 2phnlzaiuyi5b1\n\n### 소요시간:\n- ~5-10분",
+        "height": 380,
+        "width": 500
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-352, 176],
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT\n    gj.id as job_id,\n    gj.work_id,\n    w.*,\n    t.id as template_id,\n    t.template_name,\n    t.is_active\n\nFROM generation_jobs gj\nINNER JOIN works w ON gj.work_id = w.id\nLEFT JOIN templates t ON w.template_id = t.id\n\nWHERE\n    gj.id = '{{ $json.body.record.id }}'\n    AND w.template_id = '2ec171be-71e1-4a95-a28b-b533424ea98a'\n    AND t.is_active = true\n\nORDER BY gj.priority DESC, gj.created_at ASC;",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [432, 160],
+      "name": "Execute a SQL query1",
+      "credentials": {
+        "postgres": {
+          "id": "oK2dPeiNRFB9Po8Q",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "check-jobs-exist",
+              "leftValue": "={{ $json.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [592, 160],
+      "name": "IF Jobs Exist1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "generation_jobs",
+        "matchType": "allFilters",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Execute a SQL query1').item.json.job_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "taken"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [752, 160],
+      "name": "Mark as Taken1",
+      "alwaysOutputData": true,
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// ============================================================\n// XiCON T2V LTX2 - Payload Builder\n// ============================================================\n\nconst sqlData = $('Execute a SQL query1').item.json;\nconst inputData = sqlData.input_data || {};\n\nconst prompt = inputData.prompt || \"A beautiful cinematic video\";\n\nreturn {\n  json: {\n    input: {\n      prompt: prompt,\n      width: 1280,\n      height: 720,\n      frame_count: 121,\n      seed: 0\n    },\n    work_id: sqlData.id,\n    generation_metadata: JSON.stringify({\n      prompt: prompt,\n      model: \"LTX-2\",\n      width: 1280,\n      height: 720,\n      frame_count: 121,\n      submitted_at: new Date().toISOString()\n    })\n  }\n};\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [928, 160],
+      "name": "Build Payload"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.runpod.ai/v2/2phnlzaiuyi5b1/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ input: $json.input }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1104, 160],
+      "name": "Submit to RunPod1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "VnSRamgasodbgGr1",
+          "name": "runpod_serverless_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "works",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Build Payload').item.json.work_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "processing"
+            },
+            {
+              "fieldId": "runpod_job_id",
+              "fieldValue": "={{ $json.id }}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1264, 160],
+      "name": "Update Works to Processing1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [288, 368],
+      "name": "Wait 5s1",
+      "webhookId": "wait-t2v-ltx2"
+    },
+    {
+      "parameters": {
+        "url": "=https://api.runpod.ai/v2/2phnlzaiuyi5b1/status/{{ $json.runpod_job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [448, 368],
+      "name": "Check RunPod Status1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "VnSRamgasodbgGr1",
+          "name": "runpod_serverless_api"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "COMPLETED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "completed-condition"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "completed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "failed-condition",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "FAILED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "failed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "cancelled-condition",
+                    "leftValue": "={{ $json.status }}",
+                    "rightValue": "CANCELLED",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "cancelled"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [624, 368],
+      "name": "Switch (Status)1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "video_base64",
+              "name": "video_base64",
+              "value": "={{ $('Check RunPod Status1').item.json.output.video }}",
+              "type": "string"
+            },
+            {
+              "id": "filename",
+              "name": "filename",
+              "value": "=XiCON_T2V_{{ $('Wait 5s1').item.json.user_id }}_{{ Date.now() }}.mp4",
+              "type": "string"
+            },
+            {
+              "id": "work_id",
+              "name": "work_id",
+              "value": "={{ $('Update Works to Processing1').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "user_id",
+              "name": "user_id",
+              "value": "={{ $('Update Works to Processing1').item.json.user_id }}",
+              "type": "string"
+            },
+            {
+              "id": "runpod_job_id",
+              "name": "runpod_job_id",
+              "value": "={{ $('Wait 5s1').item.json.runpod_job_id }}",
+              "type": "string"
+            },
+            {
+              "id": "project_id",
+              "name": "project_id",
+              "value": "={{ $('Update Works to Processing1').item.json.project_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [832, 368],
+      "name": "Extract Video Data"
+    },
+    {
+      "parameters": {
+        "operation": "toBinary",
+        "sourceProperty": "video_base64",
+        "options": {
+          "fileName": "={{ $json.filename }}",
+          "mimeType": "video/mp4"
+        }
+      },
+      "type": "n8n-nodes-base.convertToFile",
+      "typeVersion": 1.1,
+      "position": [1008, 368],
+      "name": "Convert to File1",
+      "retryOnFail": true,
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://inwtsfxxunljfznahixt.supabase.co/storage/v1/object/works/{{ $('Update Works to Processing1').item.json.user_id }}/{{ $('Update Works to Processing1').item.json.id }}/{{ $('Extract Video Data').item.json.filename }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "video/mp4"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "binaryData",
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1184, 368],
+      "name": "Upload to Storage1",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "2d2J6D3c7qf3JGGP",
+          "name": "Supabase_Role"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "tableId": "files",
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "bucket_id",
+              "fieldValue": "=works"
+            },
+            {
+              "fieldId": "file_path",
+              "fieldValue": "={{ $('Extract Video Data').item.json.user_id }}/{{ $('Extract Video Data').item.json.work_id }}/{{ $('Extract Video Data').item.json.filename }}"
+            },
+            {
+              "fieldId": "file_name",
+              "fieldValue": "={{ $('Extract Video Data').item.json.filename }}"
+            },
+            {
+              "fieldId": "file_size",
+              "fieldValue": "={{ $('Upload to Storage1').item.json.size || 0 }}"
+            },
+            {
+              "fieldId": "file_type",
+              "fieldValue": "=video/mp4"
+            },
+            {
+              "fieldId": "created_at",
+              "fieldValue": "={{ $now }}"
+            },
+            {
+              "fieldId": "user_id",
+              "fieldValue": "={{ $('Extract Video Data').item.json.user_id }}"
+            },
+            {
+              "fieldId": "work_id",
+              "fieldValue": "={{ $('Extract Video Data').item.json.work_id }}"
+            },
+            {
+              "fieldId": "file_id",
+              "fieldValue": "={{ $('Upload to Storage1').item.json.Id }}"
+            },
+            {
+              "fieldId": "width",
+              "fieldValue": "=1280"
+            },
+            {
+              "fieldId": "height",
+              "fieldValue": "=720"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1360, 368],
+      "name": "Create Files Record1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "file_id",
+              "name": "file_id",
+              "value": "={{ $('Create Files Record1').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "work_id",
+              "name": "work_id",
+              "value": "={{ $('Extract Video Data').item.json.work_id }}",
+              "type": "string"
+            },
+            {
+              "id": "output_data_json",
+              "name": "output_data_json",
+              "value": "={{ $('Build Payload').item.json.generation_metadata }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1520, 368],
+      "name": "Prepare Update Data1"
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "works",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Extract Video Data').item.json.work_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "completed"
+            },
+            {
+              "fieldId": "output_file_id",
+              "fieldValue": "={{ $('Create Files Record1').item.json.id }}"
+            },
+            {
+              "fieldId": "thumbnail_file_id",
+              "fieldValue": "={{ $('Create Files Record1').item.json.id }}"
+            },
+            {
+              "fieldId": "output_data",
+              "fieldValue": "={{ $json.output_data_json }}"
+            },
+            {
+              "fieldId": "title",
+              "fieldValue": "AI 생성 비디오"
+            },
+            {
+              "fieldId": "tags",
+              "fieldValue": "{\"T2V\", \"Text_to_Video\", \"AI생성\"}"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [1680, 368],
+      "name": "Update Works to Completed1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "works",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Execute a SQL query1').item.json.work_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "failed"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [832, 528],
+      "name": "Update Works to Failed1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "tableId": "works",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "id",
+              "condition": "eq",
+              "keyValue": "={{ $('Execute a SQL query1').item.json.work_id }}"
+            }
+          ]
+        },
+        "fieldsUi": {
+          "fieldValues": [
+            {
+              "fieldId": "status",
+              "fieldValue": "cancelled"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.supabase",
+      "typeVersion": 1,
+      "position": [832, 672],
+      "name": "Update Works to Cancelled1",
+      "credentials": {
+        "supabaseApi": {
+          "id": "CSWlnQ927dKwfJoO",
+          "name": "Supabase_XICON(TBD)"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "work_id",
+              "name": "work_id",
+              "value": "={{ $('Update Works to Processing1').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "runpod_job_id",
+              "name": "runpod_job_id",
+              "value": "={{ $json.id || $('Submit to RunPod1').item.json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "user_id",
+              "name": "user_id",
+              "value": "={{ $('Wait 5s1').item.json.user_id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [832, 832],
+      "name": "Preserve Input Data1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ltx2_t2v",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [256, 160],
+      "name": "Webhook"
+    }
+  ],
+  "connections": {
+    "Execute a SQL query1": {
+      "main": [[{"node": "IF Jobs Exist1", "type": "main", "index": 0}]]
+    },
+    "IF Jobs Exist1": {
+      "main": [[], [{"node": "Mark as Taken1", "type": "main", "index": 0}]]
+    },
+    "Mark as Taken1": {
+      "main": [[{"node": "Build Payload", "type": "main", "index": 0}]]
+    },
+    "Build Payload": {
+      "main": [[{"node": "Submit to RunPod1", "type": "main", "index": 0}]]
+    },
+    "Submit to RunPod1": {
+      "main": [[{"node": "Update Works to Processing1", "type": "main", "index": 0}]]
+    },
+    "Update Works to Processing1": {
+      "main": [[{"node": "Wait 5s1", "type": "main", "index": 0}]]
+    },
+    "Wait 5s1": {
+      "main": [[{"node": "Check RunPod Status1", "type": "main", "index": 0}]]
+    },
+    "Check RunPod Status1": {
+      "main": [[{"node": "Switch (Status)1", "type": "main", "index": 0}]]
+    },
+    "Switch (Status)1": {
+      "main": [
+        [{"node": "Extract Video Data", "type": "main", "index": 0}],
+        [{"node": "Update Works to Failed1", "type": "main", "index": 0}],
+        [{"node": "Update Works to Cancelled1", "type": "main", "index": 0}],
+        [{"node": "Preserve Input Data1", "type": "main", "index": 0}]
+      ]
+    },
+    "Extract Video Data": {
+      "main": [[{"node": "Convert to File1", "type": "main", "index": 0}]]
+    },
+    "Convert to File1": {
+      "main": [[{"node": "Upload to Storage1", "type": "main", "index": 0}]]
+    },
+    "Upload to Storage1": {
+      "main": [[{"node": "Create Files Record1", "type": "main", "index": 0}]]
+    },
+    "Create Files Record1": {
+      "main": [[{"node": "Prepare Update Data1", "type": "main", "index": 0}]]
+    },
+    "Prepare Update Data1": {
+      "main": [[{"node": "Update Works to Completed1", "type": "main", "index": 0}]]
+    },
+    "Preserve Input Data1": {
+      "main": [[{"node": "Wait 5s1", "type": "main", "index": 0}]]
+    },
+    "Webhook": {
+      "main": [[{"node": "Execute a SQL query1", "type": "main", "index": 0}]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false
+  },
+  "staticData": null,
+  "meta": null,
+  "pinData": {}
+}

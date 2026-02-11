@@ -33,3 +33,7 @@ temp/
 # Env
 .env
 .env.local
+
+# Test output files
+test_output*.mp4
+*.py
