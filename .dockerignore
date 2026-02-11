@@ -1,0 +1,13 @@
+.git/
+.github/
+.omc/
+*.md
+test_*.py
+test_output*.mp4
+n8n_workflow_*.json
+텍스트2비디오_LTX2.json
+activate_workflow.py
+COMPLETION_REPORT.md
+CRITICAL_ISSUES_FIXED.md
+E2E_*.md
+README*.md

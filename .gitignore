@@ -36,4 +36,5 @@ temp/
 
 # Test output files
 test_output*.mp4
-*.py
+test_*.py
+activate_workflow.py

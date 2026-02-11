@@ -53,10 +53,19 @@ RUN rm -rf /root/.cache /tmp/* /var/tmp/*
 
 # NO MODEL DOWNLOADS - Network Volume 사용
 
-COPY . .
+# Create directory structure first (before copying files)
 RUN mkdir -p /ComfyUI/user/default/ComfyUI-Manager
+
+# Copy stable config first (changes rarely)
 COPY config.ini /ComfyUI/user/default/ComfyUI-Manager/config.ini
-RUN chmod +x /entrypoint.sh
-RUN chmod +x /setup_netvolume.sh 2>/dev/null || true
+
+# Copy volatile application code LAST (changes frequently)
+COPY handler.py /handler.py
+COPY entrypoint.sh /entrypoint.sh
+COPY workflow_api.json /workflow_api.json
+COPY setup_netvolume.sh /setup_netvolume.sh
+
+# Set permissions
+RUN chmod +x /entrypoint.sh /setup_netvolume.sh
 
 CMD ["/entrypoint.sh"]
