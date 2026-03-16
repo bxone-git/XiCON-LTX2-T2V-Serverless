@@ -164,6 +164,51 @@ def connect_websocket_with_retry(max_attempts=36, retry_delay=5):
                 raise RuntimeError(f"Failed to connect to WebSocket after {max_attempts} attempts")
 
 
+def extract_first_frame(video_data):
+    """Extract first frame from video as JPEG using ffmpeg."""
+    import subprocess
+    import tempfile
+
+    tmp_video_path = None
+    tmp_thumb_path = None
+
+    try:
+        # Save video to temp file
+        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_video:
+            tmp_video.write(video_data)
+            tmp_video_path = tmp_video.name
+
+        # Output path for thumbnail
+        tmp_thumb_path = tmp_video_path.replace('.mp4', '_thumb.jpg')
+
+        # Extract first frame using ffmpeg
+        result = subprocess.run(
+            ['ffmpeg', '-i', tmp_video_path, '-vframes', '1', '-q:v', '2', '-y', tmp_thumb_path],
+            capture_output=True, timeout=30
+        )
+
+        if result.returncode != 0:
+            logger.warning(f"ffmpeg thumbnail extraction failed: {result.stderr.decode()[:200]}")
+            return None
+
+        # Read thumbnail
+        with open(tmp_thumb_path, 'rb') as f:
+            thumb_data = f.read()
+
+        logger.info(f"Thumbnail extracted: {len(thumb_data)} bytes")
+        return base64.b64encode(thumb_data).decode('utf-8')
+    except Exception as e:
+        logger.warning(f"Thumbnail extraction failed: {e}")
+        return None
+    finally:
+        # Cleanup temp files
+        for path in [tmp_video_path, tmp_thumb_path]:
+            try:
+                os.unlink(path)
+            except Exception:
+                pass
+
+
 def handler(job):
     """Main handler for LTX-2 Text-to-Video workflow (2-stage pipeline with 92:XX subgraph nodes)."""
     task_id = str(uuid.uuid4())
@@ -181,15 +226,27 @@ def handler(job):
 
         # Validate and map aspect_ratio
         ASPECT_RATIO_MAP = {
-            "16:9": (1280, 720),
-            "9:16": (720, 1280),
+            "16:9": (1248, 704),   # Was (1280, 720) - 720 not multiple of 32
+            "9:16": (704, 1248),   # Was (720, 1280)
+            "4:3": (1024, 768),
+            "3:4": (768, 1024),
+            "1:1": (960, 960),
         }
-        if aspect_ratio not in ASPECT_RATIO_MAP:
-            return {"error": f"Invalid aspect_ratio: {aspect_ratio}. Must be '16:9' or '9:16'"}
-        width, height = ASPECT_RATIO_MAP[aspect_ratio]
 
-        # Internal defaults (not exposed to API)
-        frame_count = 121
+        # Explicit width/height (from n8n) takes priority over aspect_ratio map
+        explicit_width = job_input.get("width")
+        explicit_height = job_input.get("height")
+
+        if explicit_width and explicit_height:
+            width = explicit_width
+            height = explicit_height
+        else:
+            if aspect_ratio not in ASPECT_RATIO_MAP:
+                return {"error": f"Invalid aspect_ratio: {aspect_ratio}. Must be one of: {', '.join(ASPECT_RATIO_MAP.keys())}"}
+            width, height = ASPECT_RATIO_MAP[aspect_ratio]
+
+        # Configurable frame count (default 121 = ~5 seconds @ 24fps)
+        frame_count = job_input.get("frame_count", 121)
         seed = 0
 
         logger.info(f"Task {task_id}: Processing text-to-video with prompt: '{prompt[:80]}...'")
@@ -244,14 +301,20 @@ def handler(job):
 
         result_b64 = base64.b64encode(video_data).decode('utf-8')
 
+        # Extract first frame as thumbnail
+        thumbnail_b64 = extract_first_frame(video_data)
+
         logger.info(f"Task {task_id}: Complete")
 
         return {
             "video": result_b64,
+            "thumbnail": thumbnail_b64,
             "seed": seed,
             "prompt_id": prompt_id,
             "frame_count": frame_count,
-            "duration_seconds": round(duration_seconds, 2)
+            "duration_seconds": round(duration_seconds, 2),
+            "width": width,
+            "height": height
         }
 
     except Exception as e:
